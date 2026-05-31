@@ -1361,7 +1361,7 @@ export default function App() {
       <footer className="border-t border-border bg-card mt-16 py-8">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <span>🌽 NutriBolivia — Seguimiento Nutricional Infantil</span>
-          <span>© 2025 · Ministerio de Salud Bolivia</span>
+          <span>© 2026 · Bolivia</span>
         </div>
       </footer>
     </div>
