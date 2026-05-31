@@ -9,6 +9,7 @@ import {
   Apple, Zap, User, Calendar, Weight, Ruler,
 } from "lucide-react";
 import { supabase } from "./lib/supabaseClient";
+import * as measurementController from "./controllers/measurementController";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,11 +29,7 @@ interface HistorialItem extends NinoData {
   child_id: string;
 }
 
-interface ChildRow {
-  id: string;
-  full_name: string;
-  age_years: number | null;
-}
+
 
 interface MeasurementRow {
   id: string;
@@ -293,7 +290,8 @@ function Navbar({ current, onNavigate }: { current: PageKey; onNavigate: (p: Pag
             <li key={item.key}>
               <button
                 onClick={() => onNavigate(item.key)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                data-active={current === item.key}
+                className={`nav-button flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   current === item.key
                     ? "bg-primary-foreground/20 text-primary-foreground"
                     : "text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10"
@@ -322,8 +320,9 @@ function Navbar({ current, onNavigate }: { current: PageKey; onNavigate: (p: Pag
           {navItems.map((item) => (
             <button
               key={item.key}
+              data-active={current === item.key}
               onClick={() => { onNavigate(item.key); setMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-6 py-3 text-sm text-left transition-colors ${
+              className={`nav-button w-full flex items-center gap-3 px-6 py-3 text-sm text-left transition-colors ${
                 current === item.key
                   ? "bg-primary-foreground/20"
                   : "hover:bg-primary-foreground/10 text-primary-foreground/80"
@@ -346,48 +345,23 @@ function InicioView({ onNavigate }: PageProps) {
     atRisk: number;
     measurementsThisMonth: number;
   } | null>(null);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(supabase ? null : "Configura las variables de Supabase para ver indicadores.");
 
   useEffect(() => {
-    if (!supabase) {
-      setStatsError("Configura las variables de Supabase para ver indicadores.");
-      return;
-    }
-
+    if (!supabase) return;
     let cancelled = false;
     const loadStats = async () => {
-      const { data: latestData, error: latestError } = await supabase
-        .from("latest_measurements")
-        .select("bmi_status");
-
-      if (latestError) {
+      try {
+        const { totalChildren, atRisk } = await measurementController.loadLatestAndCounts();
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        const count = await measurementController.countSince(startOfMonth.toISOString());
+        if (!cancelled) {
+          setStats({ totalChildren, atRisk, measurementsThisMonth: count ?? 0 });
+        }
+      } catch {
         if (!cancelled) setStatsError("No se pudieron cargar los indicadores.");
-        return;
-      }
-
-      const totalChildren = latestData?.length ?? 0;
-      const atRisk = (latestData ?? []).filter((row) => row.bmi_status !== "normal").length;
-
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-
-      const { count, error: countError } = await supabase
-        .from("measurements")
-        .select("id", { count: "exact", head: true })
-        .gte("measured_at", startOfMonth.toISOString());
-
-      if (countError) {
-        if (!cancelled) setStatsError("No se pudieron cargar los indicadores.");
-        return;
-      }
-
-      if (!cancelled) {
-        setStats({
-          totalChildren,
-          atRisk,
-          measurementsThisMonth: count ?? 0,
-        });
       }
     };
 
@@ -481,7 +455,7 @@ function InicioView({ onNavigate }: PageProps) {
             <button
               key={item.key}
               onClick={() => onNavigate(item.key)}
-              className="bg-card border border-border rounded-xl p-5 text-left hover:border-primary/40 hover:shadow-md transition-all group"
+              className="nav-button bg-card border border-border rounded-xl p-5 text-left hover:border-primary/40 hover:shadow-md transition-all group"
             >
               <div className="bg-primary/10 text-primary p-2.5 rounded-lg inline-block mb-3 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                 {item.icon}
@@ -712,44 +686,14 @@ function PlanAlimentario({ estado }: { estado: NinoData["estado"] }) {
 
 // ─── ESTADO NUTRICIONAL VIEW ──────────────────────────────────────────────────
 
-function EstadoNutricionalView(_props: PageProps) {
+function EstadoNutricionalView() {
   const [form, setForm] = useState({ nombre: "", edad: "", peso: "", talla: "" });
   const [resultado, setResultado] = useState<NinoData | null>(null);
   const [historial, setHistorial] = useState<HistorialItem[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const loadChildHistory = useCallback(async (childId: string) => {
-    if (!supabase) {
-      setStatusMessage("Configura las variables de Supabase para guardar los datos.");
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("measurements")
-      .select("id, child_id, weight_kg, height_cm, bmi, bmi_status, measured_at, child:children(full_name, age_years)")
-      .eq("child_id", childId)
-      .order("measured_at", { ascending: false })
-      .limit(5);
-
-    if (error) {
-      setStatusMessage("No se pudo cargar el historial.");
-      return;
-    }
-
-    const mapped = (data ?? []).map((row: any) => ({
-      nombre: row.child?.full_name ?? "Sin nombre",
-      edad: row.child?.age_years ?? 0,
-      peso: Number(row.weight_kg),
-      talla: Number(row.height_cm),
-      imc: Number(row.bmi),
-      estado: row.bmi_status as NinoData["estado"],
-      measured_at: row.measured_at,
-      child_id: row.child_id,
-    }));
-
-    setHistorial(mapped);
-  }, []);
+  
 
   const handleCalc = useCallback(async () => {
     if (!supabase) {
@@ -770,54 +714,27 @@ function EstadoNutricionalView(_props: PageProps) {
     setIsSaving(true);
     setStatusMessage(null);
 
-    const { data: existingChild, error: childSelectError } = await supabase
-      .from("children")
-      .select("id, full_name, age_years")
-      .eq("full_name", nombre)
-      .maybeSingle();
-
-    if (childSelectError) {
+    try {
+      setStatusMessage(null);
+      const res = await measurementController.saveMeasurementByName(nombre, edad, peso, talla, imc, estado);
+      setResultado(data);
+      const mapped = (res.history ?? []).map((row: MeasurementRow) => ({
+        nombre: res.child.full_name,
+        edad: res.child.age_years ?? 0,
+        peso: Number(row.weight_kg),
+        talla: Number(row.height_cm),
+        imc: Number(row.bmi),
+        estado: row.bmi_status,
+        measured_at: row.measured_at,
+        child_id: row.child_id,
+      }));
+      setHistorial(mapped);
+    } catch {
+      setStatusMessage("Error guardando la medicion.");
+    } finally {
       setIsSaving(false);
-      setStatusMessage("No se pudo validar el registro del niño/a.");
-      return;
     }
-
-    let child: ChildRow | null = existingChild ?? null;
-
-    if (!child) {
-      const { data: insertedChild, error: insertChildError } = await supabase
-        .from("children")
-        .insert({ full_name: nombre, age_years: Math.round(edad) })
-        .select("id, full_name, age_years")
-        .single();
-
-      if (insertChildError) {
-        setIsSaving(false);
-        setStatusMessage("No se pudo registrar al niño/a.");
-        return;
-      }
-
-      child = insertedChild;
-    }
-
-    const { error: measurementError } = await supabase.from("measurements").insert({
-      child_id: child.id,
-      weight_kg: peso,
-      height_cm: talla,
-      bmi: imc,
-      bmi_status: estado,
-    });
-
-    if (measurementError) {
-      setIsSaving(false);
-      setStatusMessage("No se pudo guardar el control nutricional.");
-      return;
-    }
-
-    setResultado(data);
-    await loadChildHistory(child.id);
-    setIsSaving(false);
-  }, [form, loadChildHistory]);
+  }, [form]);
 
   const chartData = [...historial]
     .reverse()
@@ -920,7 +837,7 @@ function EstadoNutricionalView(_props: PageProps) {
                   <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#7A6652" }} />
                   <YAxis domain={[14, 30]} tick={{ fontSize: 11, fill: "#7A6652" }} />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, borderColor: "rgba(44,26,14,0.1)" }} />
-                  <Line type="monotone" dataKey="imc" stroke="#B8441F" strokeWidth={2} dot={{ r: 4, fill: "#B8441F" }} name="IMC" />
+                  <Line type="monotone" dataKey="imc" stroke="var(--color-primary)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-primary)" }} name="IMC" />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -967,40 +884,29 @@ function EstadoNutricionalView(_props: PageProps) {
 
 // ─── EDUCACIÓN VIEW ───────────────────────────────────────────────────────────
 
-function EducacionView(_props: PageProps) {
+function EducacionView() {
   const [juegoActivo, setJuegoActivo] = useState<number | null>(null);
   const [tips, setTips] = useState<TipRow[]>([]);
   const [comparisons, setComparisons] = useState<FoodComparisonRow[]>([]);
   const [games, setGames] = useState<EducationGameRow[]>([]);
-  const [educationError, setEducationError] = useState<string | null>(null);
+  const [educationError, setEducationError] = useState<string | null>(supabase ? null : "Configura las variables de Supabase para cargar contenido educativo.");
 
   useEffect(() => {
-    if (!supabase) {
-      setEducationError("Configura las variables de Supabase para cargar contenido educativo.");
-      return;
-    }
-
+    if (!supabase) return;
     let cancelled = false;
-    const loadEducation = async () => {
-      const [tipsResult, comparisonsResult, gamesResult] = await Promise.all([
-        supabase.from("education_tips").select("id, tip, sort_order").order("sort_order", { ascending: true }),
-        supabase.from("food_comparisons").select("*").order("local_name", { ascending: true }),
-        supabase.from("education_games").select("*").order("title", { ascending: true }),
-      ]);
-
-      if (tipsResult.error || comparisonsResult.error || gamesResult.error) {
+    const load = async () => {
+      try {
+        const content = await (await import("./controllers/educationController")).loadEducationContent();
+        if (!cancelled) {
+          setTips(content.tips ?? []);
+          setComparisons(content.comparisons ?? []);
+          setGames(content.games ?? []);
+        }
+      } catch {
         if (!cancelled) setEducationError("No se pudo cargar el contenido educativo.");
-        return;
-      }
-
-      if (!cancelled) {
-        setTips((tipsResult.data ?? []) as TipRow[]);
-        setComparisons((comparisonsResult.data ?? []) as FoodComparisonRow[]);
-        setGames((gamesResult.data ?? []) as EducationGameRow[]);
       }
     };
-
-    loadEducation();
+    load();
     return () => {
       cancelled = true;
     };
@@ -1078,7 +984,7 @@ function EducacionView(_props: PageProps) {
                         <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
                         <Bar dataKey="a" name={cmp.local_name} fill="#4A7C59" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="b" name={cmp.processed_name} fill="#B8441F" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="b" name={cmp.processed_name} fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -1125,64 +1031,47 @@ function EducacionView(_props: PageProps) {
 
 // ─── MONITOREO VIEW ───────────────────────────────────────────────────────────
 
-function MonitoreoView(_props: PageProps) {
+function MonitoreoView() {
   const [filtro, setFiltro] = useState<NinoData["estado"] | "todos">("todos");
   const [latest, setLatest] = useState<LatestMeasurementRow[]>([]);
   const [monthlyReport, setMonthlyReport] = useState<{ semana: string; normal: number; riesgo: number }[]>([]);
   const [reportLabel, setReportLabel] = useState<string>("");
-  const [monitoreoError, setMonitoreoError] = useState<string | null>(null);
+  const [monitoreoError, setMonitoreoError] = useState<string | null>(supabase ? null : "Configura las variables de Supabase para ver reportes.");
 
   useEffect(() => {
-    if (!supabase) {
-      setMonitoreoError("Configura las variables de Supabase para ver reportes.");
-      return;
-    }
-
+    if (!supabase) return;
     let cancelled = false;
     const loadMonitoreo = async () => {
-      const { data: latestData, error: latestError } = await supabase
-        .from("latest_measurements")
-        .select("id, child_id, weight_kg, height_cm, bmi, bmi_status, measured_at, full_name, age_years")
-        .order("full_name", { ascending: true });
+      try {
+        const { latest } = await measurementController.loadLatestAndCounts();
+        const now = new Date();
+        const reportStart = new Date();
+        reportStart.setDate(now.getDate() - 27);
+        reportStart.setHours(0, 0, 0, 0);
 
-      if (latestError) {
-        if (!cancelled) setMonitoreoError("No se pudo cargar el listado.");
-        return;
-      }
+        const reportData = await measurementController.getMeasurementsSince(reportStart.toISOString());
 
-      const now = new Date();
-      const reportStart = new Date();
-      reportStart.setDate(now.getDate() - 27);
-      reportStart.setHours(0, 0, 0, 0);
+        const buckets = [0, 1, 2, 3].map((index) => ({
+          semana: `Sem ${index + 1}`,
+          normal: 0,
+          riesgo: 0,
+        }));
 
-      const { data: reportData, error: reportError } = await supabase
-        .from("measurements")
-        .select("bmi_status, measured_at")
-        .gte("measured_at", reportStart.toISOString());
+        (reportData ?? []).forEach((row: { bmi_status: string; measured_at?: string }) => {
+          const measuredAt = new Date(row.measured_at);
+          const diffMs = measuredAt.getTime() - reportStart.getTime();
+          const weekIndex = Math.min(3, Math.max(0, Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000))));
+          if (row.bmi_status === "normal") buckets[weekIndex].normal += 1;
+          else buckets[weekIndex].riesgo += 1;
+        });
 
-      if (reportError) {
+        if (!cancelled) {
+          setLatest((latest ?? []) as LatestMeasurementRow[]);
+          setMonthlyReport(buckets);
+          setReportLabel(now.toLocaleDateString("es-BO", { month: "long", year: "numeric" }));
+        }
+      } catch {
         if (!cancelled) setMonitoreoError("No se pudo cargar el reporte mensual.");
-        return;
-      }
-
-      const buckets = [0, 1, 2, 3].map((index) => ({
-        semana: `Sem ${index + 1}`,
-        normal: 0,
-        riesgo: 0,
-      }));
-
-      (reportData ?? []).forEach((row: any) => {
-        const measuredAt = new Date(row.measured_at);
-        const diffMs = measuredAt.getTime() - reportStart.getTime();
-        const weekIndex = Math.min(3, Math.max(0, Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000))));
-        if (row.bmi_status === "normal") buckets[weekIndex].normal += 1;
-        else buckets[weekIndex].riesgo += 1;
-      });
-
-      if (!cancelled) {
-        setLatest((latestData ?? []) as LatestMeasurementRow[]);
-        setMonthlyReport(buckets);
-        setReportLabel(now.toLocaleDateString("es-BO", { month: "long", year: "numeric" }));
       }
     };
 
@@ -1286,7 +1175,7 @@ function MonitoreoView(_props: PageProps) {
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="normal" name="Estado normal" fill="#4A7C59" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="riesgo" name="En riesgo" fill="#B8441F" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="riesgo" name="En riesgo" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -1326,40 +1215,29 @@ function MonitoreoView(_props: PageProps) {
 
 // ─── CONTACTO VIEW ────────────────────────────────────────────────────────────
 
-function ContactoView(_props: PageProps) {
+function ContactoView() {
   const [faqAbierto, setFaqAbierto] = useState<number | null>(null);
   const [faqsData, setFaqsData] = useState<FaqRow[]>([]);
   const [guidesData, setGuidesData] = useState<GuideRow[]>([]);
   const [contactInfo, setContactInfo] = useState<ContactInfoRow[]>([]);
-  const [contactError, setContactError] = useState<string | null>(null);
+  const [contactError, setContactError] = useState<string | null>(supabase ? null : "Configura las variables de Supabase para cargar la informacion.");
 
   useEffect(() => {
-    if (!supabase) {
-      setContactError("Configura las variables de Supabase para cargar la informacion.");
-      return;
-    }
-
+    if (!supabase) return;
     let cancelled = false;
-    const loadContact = async () => {
-      const [faqsResult, guidesResult, infoResult] = await Promise.all([
-        supabase.from("faqs").select("*").order("sort_order", { ascending: true }),
-        supabase.from("guides").select("*").order("title", { ascending: true }),
-        supabase.from("contact_info").select("*").order("sort_order", { ascending: true }),
-      ]);
-
-      if (faqsResult.error || guidesResult.error || infoResult.error) {
+    const load = async () => {
+      try {
+        const content = await (await import("./controllers/contactController")).loadContactContent();
+        if (!cancelled) {
+          setFaqsData(content.faqs ?? []);
+          setGuidesData(content.guides ?? []);
+          setContactInfo(content.info ?? []);
+        }
+      } catch {
         if (!cancelled) setContactError("No se pudo cargar la informacion de contacto.");
-        return;
-      }
-
-      if (!cancelled) {
-        setFaqsData((faqsResult.data ?? []) as FaqRow[]);
-        setGuidesData((guidesResult.data ?? []) as GuideRow[]);
-        setContactInfo((infoResult.data ?? []) as ContactInfoRow[]);
       }
     };
-
-    loadContact();
+    load();
     return () => {
       cancelled = true;
     };

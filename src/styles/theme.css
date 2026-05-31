@@ -8,7 +8,7 @@
   --card-foreground: #2C1A0E;
   --popover: #FFFAF4;
   --popover-foreground: #2C1A0E;
-  --primary: #B8441F;
+  --primary: #4A7C59;
   --primary-foreground: #FFFFFF;
   --secondary: #F5E6C8;
   --secondary-foreground: #2C1A0E;
@@ -24,11 +24,11 @@
   --switch-background: #C4A882;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #B8441F;
-  --chart-1: #B8441F;
-  --chart-2: #4A7C59;
+  --ring: #4A7C59;
+  --chart-1: #4A7C59;
+  --chart-2: #7FBF9A;
   --chart-3: #E8A94D;
-  --chart-4: #D4622A;
+  --chart-4: #2C7873;
   --chart-5: #2C7873;
   --radius: 0.75rem;
   --sidebar: oklch(0.985 0 0);
@@ -48,26 +48,26 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #66C28A;
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent: #A8D5B1;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --ring: #66C28A;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  --chart-1: #66C28A;
+  --chart-2: #4A7C59;
+  --chart-3: #E8A94D;
+  --chart-4: #2C7873;
+  --chart-5: #2C7873;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -177,5 +177,34 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+@layer components {
+  .nav-button {
+    transition: transform 200ms cubic-bezier(.2,.9,.2,1), box-shadow 200ms ease, background-color 160ms ease;
+    will-change: transform, box-shadow;
+    border-radius: 0.5rem;
+  }
+
+  .nav-button:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 10px 24px rgba(74,124,89,0.12);
+  }
+
+  .nav-button:active {
+    transform: translateY(-1px) scale(0.995);
+    box-shadow: 0 6px 14px rgba(74,124,89,0.10);
+  }
+
+  .nav-button:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: 0 0 0 4px rgba(102,194,138,0.18);
+  }
+
+  /* small subtle pulse for active state */
+  .nav-button[data-active="true"] {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: 0 8px 20px rgba(74,124,89,0.12);
   }
 }
