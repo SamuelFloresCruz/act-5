@@ -266,7 +266,7 @@ const navItems: { key: PageKey; label: string; icon: React.ReactNode }[] = [
   { key: "inicio", label: "Inicio", icon: <Home size={18} /> },
   { key: "estado", label: "Estado Nutricional", icon: <Activity size={18} /> },
   { key: "educacion", label: "Educación", icon: <BookOpen size={18} /> },
-  { key: "monitoreo", label: "Monitoreo Escolar", icon: <School size={18} /> },
+  { key: "monitoreo", label: "Monitoreo", icon: <School size={18} /> },
   { key: "contacto", label: "Contacto", icon: <Phone size={18} /> },
 ];
 
@@ -1037,6 +1037,7 @@ function MonitoreoView() {
   const [monthlyReport, setMonthlyReport] = useState<{ semana: string; normal: number; riesgo: number }[]>([]);
   const [reportLabel, setReportLabel] = useState<string>("");
   const [monitoreoError, setMonitoreoError] = useState<string | null>(supabase ? null : "Configura las variables de Supabase para ver reportes.");
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -1093,10 +1094,107 @@ function MonitoreoView() {
   const filtrados = filtro === "todos" ? mapped : mapped.filter((n) => n.estado === filtro);
   const enRiesgo = mapped.filter((n) => n.estado !== "normal");
 
+  const buildCsv = (rows: typeof mapped) => {
+    const headers = ["Nombre", "Edad", "Peso (kg)", "Talla (cm)", "IMC", "Estado"];
+    const lines = rows.map((row) => (
+      [
+        row.nombre,
+        row.edad,
+        row.peso,
+        row.talla,
+        row.imc,
+        estadoLabel(row.estado),
+      ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")
+    ));
+    return [headers.join(","), ...lines].join("\n");
+  };
+
+  const downloadBlob = (content: string, fileName: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = (format: "CSV" | "PDF") => {
+    if (filtrados.length === 0) {
+      setExportMessage("No hay datos para exportar con el filtro actual.");
+      return;
+    }
+    setExportMessage(null);
+
+    if (format === "CSV") {
+      const csv = buildCsv(filtrados);
+      downloadBlob(csv, "monitoreo-estudiantes.csv", "text/csv;charset=utf-8");
+      return;
+    }
+
+    const html = `
+      <html>
+        <head>
+          <title>Monitoreo - Reporte</title>
+          <style>
+            body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; color: #2c1a0e; }
+            h1 { font-size: 20px; margin-bottom: 8px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #e6e0d6; padding: 6px 8px; text-align: left; }
+            th { background: #f8f5f0; }
+            .meta { font-size: 12px; margin-bottom: 16px; color: #7a6652; }
+          </style>
+        </head>
+        <body>
+          <h1>Monitoreo - Exportacion</h1>
+          <div class="meta">Generado: ${new Date().toLocaleString("es-BO")}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Edad</th>
+                <th>Peso (kg)</th>
+                <th>Talla (cm)</th>
+                <th>IMC</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filtrados.map((row) => `
+                <tr>
+                  <td>${row.nombre}</td>
+                  <td>${row.edad}</td>
+                  <td>${row.peso}</td>
+                  <td>${row.talla}</td>
+                  <td>${row.imc}</td>
+                  <td>${estadoLabel(row.estado)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const win = window.open("", "_blank", "noopener,noreferrer");
+    if (!win) {
+      setExportMessage("No se pudo abrir la ventana de exportacion.");
+      return;
+    }
+
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 200);
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-10 space-y-10">
       <SectionHeader
-        title="Monitoreo Escolar"
+        title="Monitoreo"
         subtitle="Reportes de seguimiento nutricional por grado y alertas de riesgo para docentes y profesionales de salud."
       />
 
@@ -1193,6 +1291,7 @@ function MonitoreoView() {
               ].map((exp) => (
                 <button
                   key={exp.formato}
+                  onClick={() => handleExport(exp.formato as "CSV" | "PDF")}
                   className="flex items-center gap-3 bg-secondary border border-border rounded-lg px-4 py-3 hover:border-primary/40 hover:shadow-sm transition-all text-left"
                 >
                   <Download size={16} className="text-primary shrink-0" />
@@ -1203,6 +1302,9 @@ function MonitoreoView() {
                 </button>
               ))}
             </div>
+            {exportMessage && (
+              <p className="text-xs text-muted-foreground mt-3">{exportMessage}</p>
+            )}
           </Card>
         </div>
       </div>
