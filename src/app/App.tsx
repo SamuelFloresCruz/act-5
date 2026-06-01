@@ -1121,74 +1121,14 @@ function MonitoreoView() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExport = (format: "CSV" | "PDF") => {
+  const handleExport = () => {
     if (filtrados.length === 0) {
       setExportMessage("No hay datos para exportar con el filtro actual.");
       return;
     }
     setExportMessage(null);
-
-    if (format === "CSV") {
-      const csv = buildCsv(filtrados);
-      downloadBlob(csv, "monitoreo-estudiantes.csv", "text/csv;charset=utf-8");
-      return;
-    }
-
-    const html = `
-      <html>
-        <head>
-          <title>Monitoreo - Reporte</title>
-          <style>
-            body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; color: #2c1a0e; }
-            h1 { font-size: 20px; margin-bottom: 8px; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { border: 1px solid #e6e0d6; padding: 6px 8px; text-align: left; }
-            th { background: #f8f5f0; }
-            .meta { font-size: 12px; margin-bottom: 16px; color: #7a6652; }
-          </style>
-        </head>
-        <body>
-          <h1>Monitoreo - Exportacion</h1>
-          <div class="meta">Generado: ${new Date().toLocaleString("es-BO")}</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Edad</th>
-                <th>Peso (kg)</th>
-                <th>Talla (cm)</th>
-                <th>IMC</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filtrados.map((row) => `
-                <tr>
-                  <td>${row.nombre}</td>
-                  <td>${row.edad}</td>
-                  <td>${row.peso}</td>
-                  <td>${row.talla}</td>
-                  <td>${row.imc}</td>
-                  <td>${estadoLabel(row.estado)}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `;
-
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    if (!win) {
-      setExportMessage("No se pudo abrir la ventana de exportacion.");
-      return;
-    }
-
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 200);
+    const csv = buildCsv(filtrados);
+    downloadBlob(csv, "monitoreo-estudiantes.csv", "text/csv;charset=utf-8");
   };
 
   return (
@@ -1287,11 +1227,10 @@ function MonitoreoView() {
             <div className="grid grid-cols-2 gap-3">
               {[
                 { formato: "CSV", desc: "Para planillas", icono: "📊" },
-                { formato: "PDF", desc: "Informe formal", icono: "📄" },
               ].map((exp) => (
                 <button
                   key={exp.formato}
-                  onClick={() => handleExport(exp.formato as "CSV" | "PDF")}
+                  onClick={handleExport}
                   className="flex items-center gap-3 bg-secondary border border-border rounded-lg px-4 py-3 hover:border-primary/40 hover:shadow-sm transition-all text-left"
                 >
                   <Download size={16} className="text-primary shrink-0" />
